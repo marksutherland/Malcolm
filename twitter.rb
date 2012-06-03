@@ -6,7 +6,7 @@ require 'open-uri'
 
 serv = XMLRPC::CGIServer.new
 
-def get_tweet(malcolms_url, cbd, message)
+def get_tweet(message)
   source = "http://twitter.com/statuses/user_timeline/" + message + ".rss?count=1"
   content = ""
   result = ""
@@ -26,11 +26,11 @@ def get_tweet(malcolms_url, cbd, message)
 end
 
 serv.add_handler("query") do |malcolms_url, some_crazy_random_string, message|
-  get_tweet(malcolms_url, some_crazy_random_string, message)
+  get_tweet(message)
 end
   
-serv.add_handler("spam") do |malcolms_url, some_crazy_random_string, message|
-  get_tweet(malcolms_url, some_crazy_random_string, message)
+serv.add_handler("spam") do |some_crazy_random_string, message|
+  get_tweet(message)
 end
   
 serv.serve
