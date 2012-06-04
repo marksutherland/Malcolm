@@ -4,61 +4,57 @@ require 'xmlrpc/client'
 require 'rubygems'
 require 'twitter'
 require 'base64'
+require 'tweetstream'
 
 malcolm = 'malcy'
 password = 'TOPSEKRIT'
-xmlrpc_url = "http://some.stupid.domain:14159"
-call_url = "http://some.stupid.domain:14160"
+xmlrpc_url = "http://some.stupid.domain"
+call_url = "http://some.stupid.domain"
+
+puts "configuring twitter"
 Twitter.configure do |config|
   config.consumer_key = ''  
   config.consumer_secret = ''
   config.oauth_token = ''
   config.oauth_token_secret = ''
 end
+puts "configuring tweetstream"
+TweetStream.configure do |config|
+  config.consumer_key = ''  
+  config.consumer_secret = ''
+  config.oauth_token = ''
+  config.oauth_token_secret = ''
+  config.auth_method = :oauth
+end
 
-current_time = Time.now
-new_current_time = nil
-failures = 0
-nap_length = 190
-snooze_length = 60
+puts "Starting daemon"
+daemon = TweetStream::Daemon.new
+daemon.userstream do |status|
+  puts "got status"
+  if status.text.match("^@#{malcolm}") then
+    puts "matched reply"
+    status.text.match("@#{malcolm} \(.*\)")
+    message = $1
+    user = status.user.screen_name
+    serialdata = Base64.encode64(user + " " + message)
+    puts "Querying: #{user}: #{message}\n"
 
-while(true) do
-  begin
-    Twitter.mentions(malcolm).each do |reply|
-      if failures > 0 then
-        print "Twitter is back up!\n"
-        failures = 0
-      end
+    xmlrpc = XMLRPC::Client.new2(xmlrpc_url)
+    result = xmlrpc.call("query",call_url,serialdata,message)
 
-      reply_time = reply.created_at
-
-      if reply_time > current_time then
-        reply.text.match("@#{malcolm} \(.*\)")
-        message = $1
-        user = reply.user.screen_name
-        serialdata = Base64.encode64(user + " " + message)
-        print "Querying: #{user}: #{message}\n"
-
-        xmlrpc = XMLRPC::Client.new2(xmlrpc_url)
-        result = xmlrpc.call("query",call_url,serialdata,message)
-
-        twit_result = "@#{user} #{result}"
-        print "Result: #{twit_result}\n"
-        Twitter.update(twit_result[0..139])
-        new_current_time = reply_time
-      else
-        if new_current_time then
-          current_time = new_current_time
-        end
-        break
-      end
+    begin
+      twit_result = "@#{user} #{result}"
+      puts "Result: #{twit_result}\n"
+      Twitter.update(twit_result[0..139])
+    rescue Twitter::Error::Forbidden
+      # This probably meant we tried to post the same status twice. Just ignore
+      # it.
+      sleep(nap_length)
+    rescue Timeout::Error
+      puts "Timeout Error, ignoring\n"
+      sleep(nap_length)
     end
-    sleep(nap_length)
-  rescue Twitter::Error::Forbidden
-    # This probably meant we tried to post the same status twice. Just ignore
-    # it.
-  rescue Timeout::Error
-    print "Timeout Error, ignoring\n"
-    sleep(nap_length)
+  else
+    puts "No match!\n"
   end
 end
